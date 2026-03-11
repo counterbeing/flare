@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HS_CMD="${HS_CMD:-hs}"
+
+usage() {
+  cat <<'USAGE'
+Usage: flare <preset> [options]
+
+Presets:
+  flare alert                       Red edge flash
+  flare success                     Green edge flash
+  flare error                       Red edge flash (3 pulses)
+  flare pulse                       Blue edge flash (3 pulses)
+
+Nag (repeats until you interact):
+  flare nag                         Nag with alert colors
+  flare nag success                 Nag with success colors
+  flare stop                        Stop nagging
+
+Custom:
+  flare custom '#FF8800'            Custom color
+  flare custom '#FF8800' --pulses 3 Custom color with options
+
+Options (custom mode):
+  --pulses N       Number of pulses
+  --duration N     Flash duration in seconds
+  --thickness N    Edge thickness in pixels
+USAGE
+  exit 1
+}
+
+[[ $# -lt 1 ]] && usage
+
+PRESET="$1"; shift
+
+case "$PRESET" in
+  alert|success|error|pulse)
+    "$HS_CMD" -c "require('flare').trigger('${PRESET}')"
+    ;;
+  nag)
+    NAG_PRESET="${1:-alert}"; shift 2>/dev/null || true
+    "$HS_CMD" -c "require('flare').nag('${NAG_PRESET}')"
+    ;;
+  stop)
+    "$HS_CMD" -c "require('flare').stop()"
+    ;;
+  custom)
+    [[ $# -lt 1 ]] && { echo "Error: custom requires a color argument"; exit 1; }
+    COLOR="$1"; shift
+    OVERRIDES="color='${COLOR//\'/\\\'}'"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --pulses)   OVERRIDES="${OVERRIDES}, pulses=${2}"; shift 2 ;;
+        --duration) OVERRIDES="${OVERRIDES}, duration=${2}"; shift 2 ;;
+        --thickness) OVERRIDES="${OVERRIDES}, thickness=${2}"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+      esac
+    done
+    "$HS_CMD" -c "require('flare').trigger('custom', {${OVERRIDES}})"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown preset: $PRESET"
+    usage
+    ;;
+esac
