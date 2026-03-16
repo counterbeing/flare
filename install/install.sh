@@ -13,12 +13,6 @@ if [[ ! -d "$HS_MODULES" ]]; then
   exit 1
 fi
 
-# Check for hs CLI
-if ! command -v hs &>/dev/null; then
-  echo "Warning: 'hs' CLI not found on PATH."
-  echo "Enable it in Hammerspoon > Preferences > Enable CLI."
-fi
-
 # Symlink Lua module
 mkdir -p "${HS_MODULES}/flare"
 for f in init.lua flare.lua animations.lua http.lua; do
@@ -39,6 +33,12 @@ if ! grep -q 'require.*flare' "$INIT_FILE" 2>/dev/null; then
   echo "Added require(\"flare\") to ${INIT_FILE}"
 else
   echo "require(\"flare\") already in ${INIT_FILE}"
+fi
+
+# Remove hs.ipc require if present (no longer needed — CLI uses HTTP)
+if grep -q 'require.*hs\.ipc' "$INIT_FILE" 2>/dev/null; then
+  sed -i '' '/require.*hs\.ipc/d' "$INIT_FILE"
+  echo "Removed hs.ipc require (CLI now uses HTTP)"
 fi
 
 echo ""

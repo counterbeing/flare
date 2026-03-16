@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HS_CMD="${HS_CMD:-hs}"
+FLARE_HOST="${FLARE_HOST:-localhost}"
+FLARE_PORT="${FLARE_PORT:-5050}"
+FLARE_URL="http://${FLARE_HOST}:${FLARE_PORT}"
 
 usage() {
   cat <<'USAGE'
@@ -26,6 +28,10 @@ Options (custom mode):
   --pulses N       Number of pulses
   --duration N     Flash duration in seconds
   --thickness N    Edge thickness in pixels
+
+Environment:
+  FLARE_HOST       Hostname (default: localhost)
+  FLARE_PORT       Port (default: 5050)
 USAGE
   exit 1
 }
@@ -36,28 +42,37 @@ PRESET="$1"; shift
 
 case "$PRESET" in
   alert|success|error|pulse)
-    "$HS_CMD" -c "require('flare').trigger('${PRESET}')"
+    curl -sf -X POST "${FLARE_URL}/trigger" \
+      -H "Content-Type: application/json" \
+      -d "{\"preset\":\"${PRESET}\"}" > /dev/null
     ;;
   nag)
     NAG_PRESET="${1:-alert}"; shift 2>/dev/null || true
-    "$HS_CMD" -c "require('flare').nag('${NAG_PRESET}')"
+    curl -sf -X POST "${FLARE_URL}/nag" \
+      -H "Content-Type: application/json" \
+      -d "{\"preset\":\"${NAG_PRESET}\"}" > /dev/null
     ;;
   stop)
-    "$HS_CMD" -c "require('flare').stop()"
+    curl -sf -X POST "${FLARE_URL}/stop" \
+      -H "Content-Type: application/json" \
+      -d '{}' > /dev/null
     ;;
   custom)
     [[ $# -lt 1 ]] && { echo "Error: custom requires a color argument"; exit 1; }
     COLOR="$1"; shift
-    OVERRIDES="color='${COLOR//\'/\\\'}'"
+    JSON="{\"preset\":\"custom\",\"color\":\"${COLOR}\""
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --pulses)   OVERRIDES="${OVERRIDES}, pulses=${2}"; shift 2 ;;
-        --duration) OVERRIDES="${OVERRIDES}, duration=${2}"; shift 2 ;;
-        --thickness) OVERRIDES="${OVERRIDES}, thickness=${2}"; shift 2 ;;
+        --pulses)    JSON="${JSON},\"pulses\":${2}"; shift 2 ;;
+        --duration)  JSON="${JSON},\"duration\":${2}"; shift 2 ;;
+        --thickness) JSON="${JSON},\"thickness\":${2}"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
       esac
     done
-    "$HS_CMD" -c "require('flare').trigger('custom', {${OVERRIDES}})"
+    JSON="${JSON}}"
+    curl -sf -X POST "${FLARE_URL}/trigger" \
+      -H "Content-Type: application/json" \
+      -d "${JSON}" > /dev/null
     ;;
   -h|--help|help)
     usage

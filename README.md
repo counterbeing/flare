@@ -16,8 +16,6 @@ Human vision is optimized for motion at the periphery. Notifications sit in the 
 brew install --cask hammerspoon
 ```
 
-Enable the CLI tool in Hammerspoon > Preferences > Enable CLI.
-
 ### Setup
 
 ```sh
