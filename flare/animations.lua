@@ -1,5 +1,7 @@
 local M = {}
 
+-- Use tables as sets (keys = objects) so removal is O(1) and
+-- completed objects don't accumulate and leak memory.
 local activeCanvases = {}
 local activeTimers = {}
 
@@ -7,19 +9,23 @@ local GLOW_LAYERS = 8
 local FADE_FPS = 30
 
 function M.cleanup()
-  for _, t in ipairs(activeTimers) do
+  for t in pairs(activeTimers) do
     pcall(function() t:stop() end)
   end
   activeTimers = {}
-  for _, c in ipairs(activeCanvases) do
+  for c in pairs(activeCanvases) do
     pcall(function() c:delete() end)
   end
   activeCanvases = {}
 end
 
 local function trackTimer(timer)
-  activeTimers[#activeTimers + 1] = timer
+  activeTimers[timer] = true
   return timer
+end
+
+local function untrackTimer(timer)
+  activeTimers[timer] = nil
 end
 
 local function lerpColor(a, b, t)
@@ -81,7 +87,7 @@ local function createEdges(screen, color, thickness)
     c:alpha(0)
     c:show()
     canvases[#canvases + 1] = c
-    activeCanvases[#activeCanvases + 1] = c
+    activeCanvases[c] = true
   end
 
   return canvases
@@ -96,16 +102,8 @@ end
 local function deleteCanvases(canvases)
   for _, c in ipairs(canvases) do
     pcall(function() c:delete() end)
+    activeCanvases[c] = nil
   end
-  local remaining = {}
-  for _, ac in ipairs(activeCanvases) do
-    local found = false
-    for _, c in ipairs(canvases) do
-      if ac == c then found = true; break end
-    end
-    if not found then remaining[#remaining + 1] = ac end
-  end
-  activeCanvases = remaining
 end
 
 -- Animate alpha over duration. `from` → `to`.
@@ -128,6 +126,7 @@ local function animateAlpha(canvases, from, to, duration, callback)
     setAlpha(canvases, from + (to - from) * t)
     if step >= steps then
       timer:stop()
+      untrackTimer(timer)
       if callback then callback() end
     end
   end)
@@ -183,10 +182,13 @@ local function surge(screens, phases, callback)
     end
 
     -- After fade-in, hold at full brightness, then move to next phase
-    trackTimer(hs.timer.doAfter(fadeInTime + holdTime, function()
+    local phaseTimer
+    phaseTimer = hs.timer.doAfter(fadeInTime + holdTime, function()
+      untrackTimer(phaseTimer)
       prevCanvases = newCanvases
       nextPhase()
-    end))
+    end)
+    trackTimer(phaseTimer)
   end
 
   nextPhase()
@@ -251,7 +253,12 @@ function M.pulse(opts)
 
     surge(screens, phases, function()
       if count < pulseCount then
-        trackTimer(hs.timer.doAfter(interval, doPulse))
+        local t
+        t = hs.timer.doAfter(interval, function()
+          untrackTimer(t)
+          doPulse()
+        end)
+        trackTimer(t)
       end
     end)
   end
@@ -303,6 +310,7 @@ function M.nag(opts)
 
   -- Timeout after max duration
   nagTimeoutTimer = hs.timer.doAfter(timeout, function()
+    untrackTimer(nagTimeoutTimer)
     stopNag()
   end)
   trackTimer(nagTimeoutTimer)
@@ -312,7 +320,10 @@ function M.nag(opts)
     if not nagEventTap then return end  -- stopped
     surge(screens, basePhases, function()
       if nagEventTap then
-        nagTimer = hs.timer.doAfter(pauseBetween, doNagSurge)
+        nagTimer = hs.timer.doAfter(pauseBetween, function()
+          untrackTimer(nagTimer)
+          doNagSurge()
+        end)
         trackTimer(nagTimer)
       end
     end)
